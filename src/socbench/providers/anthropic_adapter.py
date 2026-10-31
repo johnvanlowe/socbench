@@ -89,7 +89,14 @@ class AnthropicAdapter(Adapter):
             "system": system_blocks,
             "messages": api_messages,
         }
-        if request.temperature is not None:
+        if request.thinking_budget:
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": request.thinking_budget,
+            }
+            if request.max_output_tokens <= request.thinking_budget:
+                kwargs["max_tokens"] = request.thinking_budget + request.max_output_tokens
+        elif request.temperature is not None:
             kwargs["temperature"] = request.temperature
         if tools:
             kwargs["tools"] = tools
@@ -253,12 +260,16 @@ def _extract_anthropic_usage(raw: Any) -> TokenUsage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
     cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+    # Anthropic extended thinking reports thinking_tokens under usage
+    reasoning_tokens = int(getattr(usage, "thinking_tokens", 0) or 0)
+    # If output_tokens includes thinking_tokens, separate them out for disjoint billing
+    output_net = max(0, output_tokens - reasoning_tokens) if reasoning_tokens else output_tokens
     # Cache creation tokens are counted under input_tokens by Anthropic.
     return TokenUsage(
         prompt_tokens=input_tokens,
         cached_tokens=cache_read,
-        output_tokens=output_tokens,
-        reasoning_tokens=0,
+        output_tokens=output_net,
+        reasoning_tokens=reasoning_tokens,
     )
 
 

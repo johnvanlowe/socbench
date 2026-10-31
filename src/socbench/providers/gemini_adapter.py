@@ -100,6 +100,10 @@ class GeminiAdapter(Adapter):
         }
         if request.temperature is not None:
             config_kwargs["temperature"] = request.temperature
+        if request.thinking_budget is not None and hasattr(types, "ThinkingConfig"):
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=request.thinking_budget
+            )
         config = types.GenerateContentConfig(**config_kwargs)
 
         start = time.monotonic()

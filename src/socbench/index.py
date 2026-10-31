@@ -144,7 +144,7 @@ def _resolve_label_columns(
     return attack_col, label_col
 
 
-def normalize_parquet(  # noqa: PLR0912, PLR0915: single linear pipeline; splitting hides the shape
+def normalize_parquet(  # noqa: PLR0912, PLR0915 -- single linear pipeline; splitting hides the shape
     sources: list[Path],
     *,
     schema: CanonicalSchema,

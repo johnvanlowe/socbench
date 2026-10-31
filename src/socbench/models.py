@@ -349,6 +349,12 @@ class EvalUnitSummary(BaseModel):
     per_host_recall: Annotated[float, Field(ge=0.0, le=1.0)] = 0.0
     per_host_f1: Annotated[float, Field(ge=0.0, le=1.0)] = 0.0
 
+    # Operational reliability & grounding metrics:
+    # evidence_grounding_rate is the fraction of cited flow_ids that appeared in
+    # tool responses (1.0 = fully grounded, <1.0 = hallucinated flow ids).
+    evidence_grounding_rate: Annotated[float, Field(ge=0.0, le=1.0)] = 1.0
+    hallucinated_flow_count: Annotated[int, Field(ge=0)] = 0
+
 
 class RunArtifactsPaths(BaseModel):
     """Resolved on-disk layout for a single run."""

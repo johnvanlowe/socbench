@@ -107,6 +107,8 @@ class AdapterRequest(BaseModel):
     # (e.g. Claude Opus 4.x) reject ``temperature``; only send it when a
     # provider is explicitly configured with one.
     temperature: Annotated[float, Field(ge=0.0, le=2.0)] | None = None
+    thinking_budget: Annotated[int, Field(ge=0)] | None = None
+    reasoning_effort: Literal["low", "medium", "high"] | None = None
     force_final_answer: bool = False  # set when budget is exhausted
 
 

@@ -565,6 +565,10 @@ def test_compute_summary_verdict_confusion_and_confidence(tmp_path):
     # 3 malicious-bearing units total (u1, u4, u5), only u1 caught.
     assert v["malicious_units_total"] == 3
     assert v["coverage_adjusted_recall"] == pytest.approx(1 / 3, rel=1e-4)
+    # False closure metrics: FN/(TP+FN) = 1/2 = 0.5; coverage-adjusted = (1+1)/3 = 2/3
+    assert v["false_closure_rate"] == pytest.approx(0.5)
+    assert v["coverage_adjusted_false_closure_rate"] == pytest.approx(2 / 3, rel=1e-4)
+    assert entry["evidence_grounding_rate_macro"] == pytest.approx(1.0)
 
     c = entry["confidence"]
     assert c["n"] == 4
@@ -632,3 +636,25 @@ def test_generate_run_id_is_unique_and_descriptive():
     b = generate_run_id(**kwargs)
     assert a != b
     assert "smoke" in a and "main" in a and "mock" in a and "abcdef01" in a
+
+
+def test_eval_unit_summary_evidence_grounding_and_hallucination(tmp_path):
+    # Tests that evidence grounding rate macro and hallucination totals aggregate accurately
+    summaries = [
+        EvalUnitSummary(
+            eval_unit_id="u1", unit_type="pair_timeline", gold_label="malicious",
+            provider="m", persona="p", cost_usd=0.0, renderings_count=1,
+            unit_first_pass_valid=True, verdict="malicious", confidence=0.9,
+            evidence_grounding_rate=1.0, hallucinated_flow_count=0,
+        ),
+        EvalUnitSummary(
+            eval_unit_id="u2", unit_type="pair_timeline", gold_label="malicious",
+            provider="m", persona="p", cost_usd=0.0, renderings_count=1,
+            unit_first_pass_valid=True, verdict="malicious", confidence=0.8,
+            evidence_grounding_rate=0.5, hallucinated_flow_count=2,
+        ),
+    ]
+    out = compute_summary(summaries, tmp_path / "missing.jsonl")
+    entry = out["scoring"]["m/p"]
+    assert entry["evidence_grounding_rate_macro"] == pytest.approx(0.75)
+    assert entry["hallucinated_flow_count_total"] == 2

@@ -59,6 +59,13 @@ def test_cli_help_shows_run_options(cli_runner):
         assert opt in result.output
 
 
+def test_cli_help_shows_serve_mcp_options(cli_runner):
+    result = cli_runner.invoke(cli, ["serve-mcp", "--help"])
+    assert result.exit_code == 0
+    for opt in ("--config", "--dataset-hash", "--persona"):
+        assert opt in result.output
+
+
 def test_cli_run_defaults_to_stratified_sampling(cli_runner, workdir, built_index):
     # No --unit-id / --limit → stratified sampling selects the units.
     result = cli_runner.invoke(

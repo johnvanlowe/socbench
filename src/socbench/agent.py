@@ -198,6 +198,8 @@ class AgentLoopConfig:
     max_output_tokens: int = 2048
     tool_max_results_cap: int = 200
     temperature: float | None = None  # None → omit from the provider call
+    thinking_budget: int | None = None  # Token budget for extended thinking/reasoning
+    reasoning_effort: str | None = None  # Reasoning effort (low/medium/high)
 
 
 @dataclass
@@ -290,6 +292,8 @@ class AgentLoop:
                 output_contract_tool_name="submit_assessment",
                 max_output_tokens=self.cfg.max_output_tokens,
                 temperature=self.cfg.temperature,
+                thinking_budget=self.cfg.thinking_budget,
+                reasoning_effort=self.cfg.reasoning_effort,  # type: ignore[arg-type]
                 force_final_answer=force,
             )
 
@@ -710,6 +714,8 @@ class Runner:
         provider_max_output_tokens: dict[str, int] | None = None,
         provider_budget_multipliers: dict[str, float] | None = None,
         provider_circuit_threshold: dict[str, int] | None = None,
+        provider_thinking_budgets: dict[str, int | None] | None = None,
+        provider_reasoning_efforts: dict[str, str | None] | None = None,
     ) -> None:
         if not adapters:
             raise ValueError("Runner requires at least one adapter")
@@ -738,6 +744,8 @@ class Runner:
         # or quota-exhausted provider shouldn't burn the whole wall-clock).
         # 0/missing → disabled.
         self.provider_circuit_threshold = provider_circuit_threshold or {}
+        self.provider_thinking_budgets = provider_thinking_budgets or {}
+        self.provider_reasoning_efforts = provider_reasoning_efforts or {}
 
     def run_sync(self, units: list[EvalUnit]) -> RunOutcome:
         """Blocking wrapper around :meth:`run` for the CLI and tests."""
@@ -1040,6 +1048,12 @@ class Runner:
         max_out = self.provider_max_output_tokens.get(provider_name)
         if max_out is not None:
             loop_config_kwargs["max_output_tokens"] = max_out
+        t_budget = self.provider_thinking_budgets.get(provider_name)
+        if t_budget is not None:
+            loop_config_kwargs["thinking_budget"] = t_budget
+        r_effort = self.provider_reasoning_efforts.get(provider_name)
+        if r_effort is not None:
+            loop_config_kwargs["reasoning_effort"] = r_effort
         loop = AgentLoop(
             config=AgentLoopConfig(**loop_config_kwargs),
             adapter=adapter,
@@ -1113,6 +1127,16 @@ class Runner:
             observed_flow_ids=observed_flow_ids,
             observed_destinations=observed_destinations,
         )
+        predicted_set = {int(f) for f in predicted_ids}
+        if observed_flow_ids is not None and predicted_set:
+            grounded = predicted_set & observed_flow_ids
+            hallucinated = predicted_set - observed_flow_ids
+            evidence_grounding_rate = len(grounded) / len(predicted_set)
+            hallucinated_flow_count = len(hallucinated)
+        else:
+            evidence_grounding_rate = 1.0
+            hallucinated_flow_count = 0
+
         summary = EvalUnitSummary(
             eval_unit_id=unit.eval_unit_id,
             unit_type=unit.unit_type,
@@ -1133,6 +1157,8 @@ class Runner:
             predicted_malicious_flow_ids=unit_score.predicted_in_scope,
             submitted_malicious_flow_indices=[int(f) for f in predicted_ids],
             submitted_malicious_destinations=[str(d) for d in predicted_dsts],
+            evidence_grounding_rate=round(evidence_grounding_rate, 6),
+            hallucinated_flow_count=hallucinated_flow_count,
             **unit_score.metric_fields(),
         )
         summaries.append(summary)
@@ -1274,6 +1300,13 @@ def _verdict_block(
         f1 = 0.0 if (precision is not None and recall is not None) else None
     else:
         f1 = round(2 * precision * recall / (precision + recall), 6)
+    malicious_scored = tp + fn
+    false_closure_rate = round(fn / malicious_scored, 6) if malicious_scored else None
+    coverage_adjusted_false_closure_rate = (
+        round((fn + (malicious_units_total - malicious_scored)) / malicious_units_total, 6)
+        if malicious_units_total
+        else None
+    )
     return {
         "tp": tp, "fp": fp, "tn": tn, "fn": fn,
         "accuracy": round((tp + tn) / total, 6) if total else None,
@@ -1284,6 +1317,8 @@ def _verdict_block(
         "coverage_adjusted_recall": (
             round(tp / malicious_units_total, 6) if malicious_units_total else None
         ),
+        "false_closure_rate": false_closure_rate,
+        "coverage_adjusted_false_closure_rate": coverage_adjusted_false_closure_rate,
     }
 
 
@@ -1376,6 +1411,10 @@ def _score_entry(group: list[EvalUnitSummary]) -> dict[str, Any]:
         "confidence": _confidence_block(valid),
         "first_pass_valid_rate": first_pass_valid_rate,
         "defect_count": sum(1 for g in group if g.defect is not None),
+        "evidence_grounding_rate_macro": round(
+            _mean([g.evidence_grounding_rate for g in valid]), 6
+        ),
+        "hallucinated_flow_count_total": sum(g.hallucinated_flow_count for g in valid),
     }
 
 

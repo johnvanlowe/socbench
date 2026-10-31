@@ -23,6 +23,7 @@ from socbench.aggregate import aggregate_ablations
 from socbench.config import load_benchmark_config, load_pricing
 from socbench.index import build_index_for_dataset
 from socbench.logging_config import configure_logging, get_logger
+from socbench.mcp import MCPServer
 from socbench.prompts import load_prompts
 from socbench.providers import build_adapter
 from socbench.providers.base import FatalAdapterError
@@ -384,6 +385,16 @@ def run_cmd(
         for name in adapters
         if name in cfg.providers
     }
+    provider_thinking_budgets: dict[str, int | None] = {
+        str(name): cfg.providers[name].thinking_budget
+        for name in adapters
+        if name in cfg.providers
+    }
+    provider_reasoning_efforts: dict[str, str | None] = {
+        str(name): cfg.providers[name].reasoning_effort
+        for name in adapters
+        if name in cfg.providers
+    }
     runner = Runner(
         run_config=rc,
         adapters=adapters,  # type: ignore[arg-type]
@@ -399,6 +410,8 @@ def run_cmd(
         provider_max_output_tokens=provider_max_output_tokens,
         provider_budget_multipliers=provider_budget_multipliers,
         provider_circuit_threshold=provider_circuit_threshold,
+        provider_thinking_budgets=provider_thinking_budgets,
+        provider_reasoning_efforts=provider_reasoning_efforts,
     )
     log.info(
         "run_start",
@@ -470,6 +483,54 @@ def aggregate_cmd(config_path: Path, dataset_hash: str, seed: int | None) -> Non
             sort_keys=True,
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# serve-mcp  (Model Context Protocol server)
+# ---------------------------------------------------------------------------
+
+
+@cli.command("serve-mcp")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=Path("config/benchmark_config.yaml"),
+    show_default=True,
+)
+@click.option("--dataset-hash", required=True, help="Index dataset_hash to query.")
+@click.option(
+    "--persona",
+    default=None,
+    help="Optional persona filter (e.g. soc_analyst). Defaults to exposing all tools.",
+)
+def serve_mcp_cmd(config_path: Path, dataset_hash: str, persona: str | None) -> None:
+    """Serve SOCBench tools over Model Context Protocol (MCP) JSON-RPC on stdio.
+
+    Allows frontier agent frameworks (Claude Code, OpenHands, SWE-agent, Cline)
+    to connect directly to SOCBench tools and investigate NetFlow datasets.
+    """
+    cfg = load_benchmark_config(config_path)
+    index_dir = cfg.paths.index_root / dataset_hash
+    if not index_dir.exists():
+        raise click.ClickException(
+            f"index dir {index_dir} not found. Run `socbench build-index` first."
+        )
+
+    if persona is not None and persona not in cfg.agent.personas:
+        raise click.ClickException(
+            f"unknown persona {persona!r}; known: {sorted(cfg.agent.personas)}"
+        )
+
+    registry = build_default_registry(
+        persona_allowlist=cfg.agent.persona_tool_allowlist()
+    )
+    server = MCPServer(
+        index_dir=index_dir,
+        registry=registry,
+        persona=persona,
+    )
+    server.run_stdio()
 
 
 if __name__ == "__main__":  # pragma: no cover

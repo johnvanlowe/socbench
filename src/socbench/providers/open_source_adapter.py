@@ -139,7 +139,11 @@ class OpenSourceAdapter(Adapter):
         }
 
         # Widen max_tokens by the reasoning budget so CoT doesn't eat the output budget.
-        reasoning_budget = self._reasoning_budget
+        reasoning_budget = (
+            request.thinking_budget
+            if request.thinking_budget is not None
+            else self._reasoning_budget
+        )
         if reasoning_budget is not None and reasoning_budget > 0:
             max_tokens = request.max_output_tokens + reasoning_budget
         else:

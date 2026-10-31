@@ -126,6 +126,11 @@ class ProviderConfig(_Strict):
     # pinned frontier reasoning models reject it; set a value only for models
     # that still accept one.
     temperature: Annotated[float, Field(ge=0.0, le=2.0)] | None = None
+    # Thinking/reasoning token budget for extended-thinking/reasoning models
+    # (Anthropic thinking, Gemini thinking_config, vLLM thinking budget).
+    thinking_budget: Annotated[int, Field(ge=0)] | None = None
+    # Reasoning effort level for reasoning models (e.g. OpenAI o-series/reasoning models).
+    reasoning_effort: Literal["low", "medium", "high"] | None = None
 
 
 class DatasetEntry(_Strict):

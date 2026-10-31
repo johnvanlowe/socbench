@@ -82,6 +82,8 @@ class OpenAIAdapter(Adapter):
         }
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
+        if request.reasoning_effort is not None:
+            kwargs["reasoning"] = {"effort": request.reasoning_effort}
         if tools:
             kwargs["tools"] = tools
             # When the budget is exhausted, force the model to call
